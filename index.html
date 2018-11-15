@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="shortcut icon" href="http://www.ibcinc.com/hubfs/images/favicon.ico" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.3/semantic.min.css" />
+        <title>IBC Station Pickups</title>
+
+</head>
+<body>
+        
+ <div class="ui container">
+ 
+        <img src="https://api.pactrak.com/images/ibc-large.gif" alt="IBC. Inc.">
+        <h1 class="ui dividing header">IBC Station Pickups<div class="sub header"><span id="station_name"></span> daily pickups.</div></h1>
+
+         <div id="messagebox"></div>
+        
+        <div class="ui grid">
+                <div class="sixteen wide column">
+                        <div class="ui segment">
+                                <table class="ui sortable celled table" id="pickup_table">
+                                        <thead><tr><th>Type</th><th>Created</th><th>Name</th><th>Address</th><th>Cutoff</th><th>Department</th><th>Driver</th><th>Status</th></tr></thead>
+                                        <tbody></tbody>
+                                </table>
+                        </div>
+                </div>
+        </div>
+         
+ </div>
+ 
+ <div class="ui clearing divider"></div>
+ 
+ <div class="ui vertical footer segment">
+        <div class="ui center aligned text container">
+                <a class="header" href="http://www.ibcinc.com">Copyright &#9400;<span id="year"></span> IBC Inc.</a>
+        </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.3.3/semantic.min.js"></script>
+<script src="https://semantic-ui.com/javascript/library/tablesort.js"></script>
+<script>
+var pickupApp = {
+        host: "https://api.pactrak.com",
+        service: "pickups/"
+};
+
+function getServiceURL( exs ){
+  var s = ( exs ) ? exs : "";
+  return pickupApp.host + "/" + pickupApp.service + s ;
+}
+
+function message_alert( header, message, is_error ){
+        var target = $( "#messagebox" );
+
+        if( !target.hasClass( "ui icon message" ) ){
+          target.addClass( "ui icon message" );
+        }
+        target.empty();
+        if( target.hasClass( 'hidden' ) ){
+          target.transition( 'scale' );
+        }
+        if( is_error ){
+          target.removeClass( "positive" ).addClass( "negative" );
+        }else{
+          target.removeClass( "negative" ).addClass( "positive" );
+        }
+        var icon_type =  is_error ? "hand point right": "inbox";
+        var icon = $( "<i/>", { "class": icon_type+" icon" } );
+        var content = $( "<div/>", { "class": "content" } );
+        content.append( $( "<div/>", { "class": "header" } ).html( header ) );
+        content.append( $( "<p/>" ).html( message ) );
+        target.append( icon ).append( content );
+
+        window.setTimeout( function(){
+            target.transition( 'fade' );
+        }, 6000 );
+}
+
+function assignMapItAction( l ){
+  var txt = l.text();
+  l.attr( { "href": "https://www.google.com/maps/place/"+encodeURI(txt), "target": "_blank"  } );
+  return l;
+}
+
+function createTableRow( dataArray ){
+  var row;
+  var entry_id;
+  for( var i = 0; i < dataArray.length; i++ ){
+    switch (i) {
+      case 0:
+        entry_id = dataArray[ i ];
+        row = $( "<tr/>", { id: entry_id } );
+        break;
+      case 2:
+        row.append( $( "<td/>" ).text( toDisplayDate( dataArray[ i ] ) ) );
+        break;
+      case 4:
+        var link = $( "<a/>", { "class" : "mapit" } ).text( dataArray[ i ] );
+        row.append( $( "<td/>" ).append( assignMapItAction( link ) ) );
+        break;
+      case 8:
+        var v = dataArray[ i ];
+        row.append( generateDropDown( v, entry_id ) );
+        if( v === 'completed' ){
+                row.attr( "style", "background-color:#ffc2b3;" );
+        }
+        break;
+      default:
+        row.append( $( "<td/>" ).text( dataArray[ i ] ) );
+    }
+  }
+  return row;
+}
+
+function toDisplayDate( input ) {
+    var td = new Date( input );
+    var month = fnum( td.getMonth() + 1 );
+    var day = fnum( td .getDate() );
+    var year = fnum( td .getFullYear() );
+    return month + "/" + day + "/" + year + " " + fnum( td.getHours() ) + ":" + fnum( td.getMinutes() );
+}
+
+function fnum( input ){
+        return ( "0" + input ).slice( -2 );
+}
+
+function arrayToValuesJSON( array, selection ){
+        var ret = [];
+        array.forEach( function( item ) {
+                obj = {};
+                obj.name = toTitleCase( item );
+                obj.value = item;
+                if( item === selection ){
+                      obj.selected = true;
+                }
+                ret.push( obj );
+        });
+        return ret;
+}
+
+function toTitleCase( str ) {
+        return str.replace( "_", " " ).replace(/\w\S*/g, function(txt){
+            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+        });
+}
+
+function generateDropDown( selection, entry_id ){
+        var dropdown_values = arrayToValuesJSON( [ "new", "in_progress", "completed" ], selection );
+        var td = $( "<td/>", { for: entry_id } );
+        var dv;
+        if( selection === 'completed' ){
+                dv = $( "<div/>" ).text( "Completed" );
+
+        }else{  
+                dv = $( "<div/>", { "class": "ui selection dropdown" } );
+                dv.append( $( "<div/>", { "class": "text" } ) );
+                dv.append( $( "<i/>", { "class": "dropdown icon" } ) );
+                var counter = -2;
+                return dv.dropdown({
+                        values: dropdown_values, onChange: function( v, t, $choice ){
+                                var station = $( "#station_name" ).text();
+                                var eid = td.attr( 'for' );
+                                counter += 1;                        
+                                if( counter > 0 ){
+                                        $.post( getServiceURL( station + "/" + eid ), { "status": v }, function( data ){
+                                                console.log( data );
+                                                var color = ( v === 'completed' ) ? "#ffc2b3" : "#ffeb99";
+                                                $( "#"+entry_id ).attr( "style", "background-color:" + color+ ";" ).transition( 'glow', function(){
+                                                        message_alert( "Update successful.", data.response_message, data.is_error );
+                                                });                
+                                        }).fail(function( xhr, textStatus, errorThrown ) {
+                                                handleError( xhr, textStatus, errorThrown );
+                                        }).always(function() {
+                                                console.log( "update finished" );
+                                                if( v === 'completed' ){
+                                                        dv.addClass( "disabled" );
+                                                }
+                                        }, 'json' );   
+                                }
+                        }
+                }).dropdown( 'refresh' );
+        }
+        return td.append( dv );
+}
+
+function handleError( xhr, textStatus, errorThrown ){
+    console.log( xhr );
+    var resp = xhr.responseJSON;
+    var str = resp.response_message + " " + resp.request_url + " ["+ resp.response_code +"]";
+    if( resp.error.message ){
+        str += "<br />"+ resp.error.message;
+    }
+    message_alert( errorThrown + " : " + textStatus, str, resp.is_error );
+}
+
+function loadTable( station ){
+        var parent = $( "#pickup_table" ).closest( ".column" );
+        parent.addClass( "ui loader" );
+        $.get( getServiceURL( station ), function( data ) {
+                console.log( data );
+                loadTableDetails( "#pickup_table tbody", data.entry );
+                message_alert( "Success", data.response_message + ". Table has been loaded.", data.is_error );
+        }).fail(function( xhr, textStatus, errorThrown ) {
+                handleError( xhr, textStatus, errorThrown );
+        }).always(function() {
+                console.log( "load table finished" );
+                parent.removeClass( "ui loader" );
+        }, 'json');
+}
+
+function loadTableDetails( target, data ){
+        for( var i=0; i<data.length; i++ ) {
+                var entry = data[ i ];
+                $( target ).append(
+                  createTableRow( [ entry._id, entry.request_type, entry.created_date,
+                      entry.pickup_name, entry.pickup_address, entry.cutoff_time, entry.department, entry.driver, entry.status ] )
+                );
+        }
+}
+        
+//Reload page every minute
+setTimeout( window.location.reload.bind( location ), 60000 );
+
+$(function(){
+        $( "#year" ).text( new Date().getFullYear() );
+        var queries = {};
+        if( document.location.search ){
+                $.each( document.location.search.substr(1).split('&'), function( c,q ){
+                        var i = q.split('=');
+                        queries[ i [ 0 ].toString() ] = i[ 1 ].toString();
+                });
+        
+                console.log( queries );
+                $( "#station_name" ).text( queries.s.toUpperCase() );
+                loadTable( $( "#station_name" ).text() );
+                $( "#pickup_table" ).tablesort();
+        }else{
+                message_alert( "Error Loading Page", "A required page parameter is missing", true );
+        }
+});
+</script>        
+</body>
+</html>
